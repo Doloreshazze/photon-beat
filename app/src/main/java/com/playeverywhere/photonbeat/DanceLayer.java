@@ -13,34 +13,36 @@ final class DanceLayer {
     private int tint(float hue,float saturation,float value,int alpha){
         hsv[0]=(hue%360+360)%360;hsv[1]=saturation;hsv[2]=value;return Color.HSVToColor(alpha,hsv);
     }
-    void draw(Canvas c,int width,int height,float beat,float pulse,float mid,float hue,float alpha,int variant){
+    void draw(Canvas c,int width,int height,int beatCount,float progress,float pulse,float mid,float hue,float alpha,int variant){
         float scale=Math.min(width/345f,height/260f);
         float y=height*.25f;
-        if(variant==0){figure(c,0,y,scale*1.24f,beat,pulse,mid,hue,alpha,0);}
+        float beat=((beatCount%16)+progress)*PI;
+        if(variant==0){figure(c,0,y,scale*1.24f,beat,progress,pulse,mid,hue,alpha,0);}
         else if(variant==1){
-            figure(c,-width*.23f,y,scale*.98f,beat,pulse,mid,hue,alpha,1);
-            figure(c,width*.23f,y,scale*.98f,beat+PI*.65f,pulse,mid,hue+160,alpha,2);
+            figure(c,-width*.23f,y,scale*.98f,beat,progress,pulse,mid,hue,alpha,1);
+            figure(c,width*.23f,y,scale*.98f,beat,progress,pulse,mid,hue+160,alpha,2);
         }else{
-            figure(c,-width*.30f,y,scale*.83f,beat+PI*.5f,pulse,mid,hue+90,alpha*.83f,2);
-            figure(c,width*.30f,y,scale*.83f,beat+PI*1.1f,pulse,mid,hue+205,alpha*.83f,1);
-            figure(c,0,y,scale*1.13f,beat,pulse,mid,hue,alpha,0);
+            figure(c,-width*.30f,y,scale*.83f,beat,progress,pulse,mid,hue+90,alpha*.83f,2);
+            figure(c,width*.30f,y,scale*.83f,beat,progress,pulse,mid,hue+205,alpha*.83f,1);
+            figure(c,0,y,scale*1.13f,beat,progress,pulse,mid,hue,alpha,0);
         }
     }
-    private void figure(Canvas c,float x,float y,float scale,float t,float pulse,float mid,float hue,float alpha,int style){
+    private void figure(Canvas c,float x,float y,float scale,float t,float progress,float pulse,float mid,float hue,float alpha,int style){
         c.save();c.translate(x,y);c.scale(scale,scale);
-        float groove=sin(t), cross=sin(t*.5f+style), lift=Math.abs(sin(t));
-        float hipX=7*groove, hipY=-48-7*lift-5*pulse;
-        float shoulderX=hipX+10*cross, shoulderY=hipY-34;
+        // Feet plant and knees compress exactly on the onset; lift happens between kicks.
+        float groove=cos(t), cross=cos(t*.5f), lift=Math.max(0,sin(progress*PI));
+        float hipX=9*groove, hipY=-50-3*lift+11*pulse;
+        float shoulderX=hipX+10*cross-3*groove*pulse, shoulderY=hipY-34-3*pulse;
         float neckX=shoulderX+2*groove,neckY=shoulderY-7;
         float headX=neckX+3*cross,headY=neckY-13;
         float spread=style==1?24:20;
-        float lFootX=-spread-9*sin(t*.5f), rFootX=spread-9*sin(t*.5f);
-        float lFootY=-3-10*Math.max(0,sin(t)), rFootY=-3-10*Math.max(0,-sin(t));
+        float lFootX=-spread-8*groove, rFootX=spread-8*groove;
+        float lFootY=-3-15*lift*Math.max(0,groove), rFootY=-3-15*lift*Math.max(0,-groove);
         float lKneeX=(hipX-7+lFootX)*.5f-5-5*groove;
         float rKneeX=(hipX+7+rFootX)*.5f+5-5*groove;
         float lKneeY=(hipY+lFootY)*.5f-3,rKneeY=(hipY+rFootY)*.5f-3;
-        float armL=style==0?(-.9f+1.0f*sin(t*.5f)+.45f*groove):style==1?(-.35f+.8f*groove):(-1.3f+.65f*cross);
-        float armR=style==0?(.9f+1.0f*sin(t*.5f)-.45f*groove):style==1?(1.5f+.65f*cross):(.35f+.85f*groove);
+        float armL=(style==0?(-.9f+1.0f*cross+.45f*groove):style==1?(-.35f+.8f*groove):(-1.3f+.65f*cross))-.22f*pulse;
+        float armR=(style==0?(.9f+1.0f*cross-.45f*groove):style==1?(1.5f+.65f*cross):(.35f+.85f*groove))+.22f*pulse;
         float lsx=shoulderX-15,rsx=shoulderX+15;
         float lex=lsx+21*sin(armL),ley=shoulderY+21*cos(armL);
         float rex=rsx+21*sin(armR),rey=shoulderY+21*cos(armR);

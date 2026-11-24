@@ -21,9 +21,9 @@ public final class PsychedelicView extends View {
     private final float[] stars=new float[120*4];
     private final float[] trigX=new float[192],trigY=new float[192];
     private float intensity=1, bass, mid, high, pulse, accent, spin, hue, phase;
-    private float floorB=.004f,floorM=.003f,floorH=.002f, peakB=.035f,peakM=.025f,peakH=.015f;
-    private float prevB, prevM, prevH, fluxAvg=.002f, tempo;
-    private long lastBeat, lastAccent, lastFrame;
+    private float peakB=.035f,peakM=.025f,peakH=.015f;
+    private float prevH, tempo, mouthOpen, mouthRound=.5f;
+    private long lastBeat=-1, lastAccent, lastFrame, lastAudioAt;
     private int validIntervals;
     private boolean active;
     private final TouchLayer touch=new TouchLayer();
@@ -60,7 +60,7 @@ public final class PsychedelicView extends View {
         }
         postInvalidateOnAnimation();return true;
     }
-    private float frameMs=16.7f, danceClock=0, speed=1.65f;
+    private float frameMs=16.7f, speed=1.65f;
     private int quality=1, qualityFrames;
     private boolean automaticQuality=true;
     private final Path[] branches={new Path(),new Path(),new Path(),new Path(),new Path()};
@@ -72,11 +72,13 @@ public final class PsychedelicView extends View {
     public void setSpeed(float value){speed=value;}
     public void setQuality(int value){automaticQuality=value==0;quality=value==0?1:value-1;qualityFrames=0;invalidate();}
     public String fpsText(){return Math.round(1000/Math.max(1,frameMs))+" FPS · "+(quality==0?"Лёгкий":quality==1?"Баланс":"Детальный");}
-    private boolean dancersEnabled=true;
-    private long danceStart;
+    private boolean dancersEnabled=true, lipsEnabled=true;
+    private long danceStart, lipStart;
     private int danceVariant;
     private final DanceLayer danceLayer=new DanceLayer();
+    private final LipLayer lipLayer=new LipLayer();
     public void setDancersEnabled(boolean value){dancersEnabled=value;invalidate();}
+    public void setLipsEnabled(boolean value){lipsEnabled=value;invalidate();}
     public PsychedelicView(Context c){super(c);setClickable(true);setContentDescription("Динамический музыкальный визуализатор");
         java.util.Random rng=new java.util.Random(8831);
         for(int i=0;i<stars.length;i++)stars[i]=rng.nextFloat();
@@ -87,42 +89,35 @@ public final class PsychedelicView extends View {
     public void setActive(boolean on){
         if(on==active)return;
         active=on;
-        if(!on){danceClock=0;frameMs=16.7f;qualityFrames=0;danceStart=0; danceVariant=0;bass=mid=high=pulse=accent=0;lastBeat=lastAccent=0;tempo=0;validIntervals=beatCount=0;scene=0;prevB=prevM=prevH=0;fluxAvg=.002f;floorB=.004f;floorM=.003f;floorH=.002f;peakB=.035f;peakM=.025f;peakH=.015f;for(int i=0;i<ripple.length;i++)ripple[i]=0;}
+        if(!on){frameMs=16.7f;qualityFrames=0;danceStart=lipStart=0;danceVariant=0;bass=mid=high=pulse=accent=mouthOpen=0;mouthRound=.5f;lastBeat=-1;lastAudioAt=lastAccent=0;tempo=0;validIntervals=beatCount=0;scene=0;prevH=0;peakB=.035f;peakM=.025f;peakH=.015f;for(int i=0;i<ripple.length;i++)ripple[i]=0;}
         lastFrame=0;invalidate();
     }
     private static float clamp(float v,float lo,float hi){return Math.max(lo,Math.min(hi,v));}
     private static float mix(float a,float b,float k){return a+(b-a)*k;}
     private static float follow(float old,float target){return mix(old,target,target>old?.82f:.27f);}
-    public boolean audio(float b,float m,float h,long now){
+    public boolean audio(CaptureService.Spectrum sample,long now){
         if(!active)return false;
-        float oldFloor=floorB;
-        floorB=mix(floorB,b,.045f);floorM=mix(floorM,m,.035f);floorH=mix(floorH,h,.035f);
+        float b=sample.bass,m=sample.mid,h=sample.high;
+        lastAudioAt=sample.capturedAt;
+        mouthOpen=sample.mouthOpen;mouthRound=sample.mouthRound;
         peakB=Math.max(b,peakB*.987f);peakM=Math.max(m,peakM*.987f);peakH=Math.max(h,peakH*.987f);
         bass=follow(bass,clamp(b/Math.max(.009f,peakB)*intensity,0,1.5f));
         mid=follow(mid,clamp(m/Math.max(.007f,peakM)*intensity,0,1.5f));
         high=follow(high,clamp(h/Math.max(.005f,peakH)*intensity,0,1.5f));
-        float flux=Math.max(0,b-prevB)+.28f*Math.max(0,m-prevM)+.12f*Math.max(0,h-prevH);
-        float rise=b-prevB;
-        boolean beat=now-lastBeat>=210 && b>Math.max(.007f,oldFloor*1.10f)
-            && rise>Math.max(.0009f,oldFloor*.055f) && flux>Math.max(.0014f,fluxAvg*1.35f);
-        boolean treble=now-lastAccent>=110 && h>Math.max(.003f,floorH*1.12f)&&h-prevH>Math.max(.0012f,floorH*.16f);
+        boolean beat=sample.beatCount!=beatCount && sample.lastBeat>=0 && now-sample.lastBeat<200;
+        beatCount=sample.beatCount;lastBeat=sample.lastBeat;tempo=sample.bpm;validIntervals=sample.validIntervals;
+        boolean treble=now-lastAccent>=110 && h>.003f&&h-prevH>.0012f;
         if(treble){accent=1;lastAccent=now;}
         if(beat){
-            long interval=now-lastBeat;
-            if(lastBeat!=0&&interval>=275&&interval<=1200){
-                float bpm=60000f/interval;
-                while(bpm<75)bpm*=2;while(bpm>170)bpm/=2;
-                tempo=tempo==0?bpm:mix(tempo,bpm,.22f);
-                validIntervals++;
-            }
-            lastBeat=now; pulse=1; beatCount++;
+            pulse=(float)Math.exp(-Math.max(0,now-lastBeat)*.007f);
             targetHue=(targetHue+32+mid*14)%360;
-            ripple[rippleIndex]=now;rippleHue[rippleIndex]=targetHue;
+            ripple[rippleIndex]=lastBeat;rippleHue[rippleIndex]=targetHue;
             rippleIndex=(rippleIndex+1)%ripple.length;
             if(beatCount%8==0)scene=(scene+1)%SCENES;
-            if(beatCount%24==8){danceStart=now;danceVariant=(danceVariant+1)%3;}
+            if(beatCount%24==1){danceStart=lastBeat;danceVariant=(danceVariant+1)%3;}
+            if(beatCount%24==13)lipStart=lastBeat;
         }
-        fluxAvg=mix(fluxAvg,flux,.055f);prevB=b;prevM=m;prevH=h;
+        prevH=h;
         return beat;
     }
     public String getTempoText(){return validIntervals>=3?"~"+Math.round(tempo)+" BPM  •  ритм":"Анализ ритма";}
@@ -156,13 +151,6 @@ public final class PsychedelicView extends View {
             pulse*=Math.exp(-dt*7);accent*=Math.exp(-dt*12);
             phase+=dt*speed*(.9f+mid*2.5f+bass*1.15f+pulse*1.1f);
             spin+=dt*speed*(.25f+mid*.9f+pulse*1.65f);
-            float bpm=tempo>0?tempo:120;
-            float desired=beatCount*PI;
-            float error=(desired-danceClock+PI*2)%(PI*2);
-            if(error>PI)error-=PI*2;
-            if(error<-PI)error+=PI*2;
-            danceClock+=dt*(bpm*PI/60f+error*pulse*2.0f);
-            if(danceClock>PI*4)danceClock-=PI*4;
             targetHue=(targetHue+dt*(5+high*13))%360;
             float delta=(targetHue-hue+540)%360-180;
             hue=(hue+delta*Math.min(1,dt*7)+360)%360;
@@ -193,17 +181,28 @@ public final class PsychedelicView extends View {
         renderScene(c,r,current);
         c.restore();
         if(active){if(current!=2)starField(c,r);ripples(c,r,now);
-            if(dancersEnabled&&danceStart!=0){
-                float period=tempo>0?60000f/tempo:500f;
-                float duration=clamp(period*8,2700,6400);
+            float period=tempo>0?60000f/tempo:500f;
+            float freshness=clamp(1-Math.max(0,now-lastAudioAt-120)/250f,0,1);
+            float music=clamp((bass+mid+high-.025f)*3,0,1)*freshness;
+            if(dancersEnabled&&(danceStart!=0||current==11)){
+                float duration=period*8;
                 float age=now-danceStart;
-                float strength=clamp(Math.min(age/500f,(duration-age)/700f),0,1);
+                float strength=current==11?1:clamp(Math.min(age/150f,(duration-age)/350f),0,1);
+                strength*=music;
                 if(strength>0){
-                    float dancePhase=danceClock;
-                    danceLayer.draw(c,getWidth(),getHeight(),dancePhase,pulse,mid,hue,strength,danceVariant);
+                    float progress=lastBeat<0?0:clamp((now-lastBeat)/period,0,1);
+                    float hit=lastBeat<0?0:(float)Math.exp(-Math.max(0,now-lastBeat)/95f);
+                    // All bodies share the actual audio onset, including the paired figures.
+                    danceLayer.draw(c,getWidth(),getHeight(),beatCount,progress,hit,mid,hue,strength,current==11?2:danceVariant);
                 }
             }
+            if(lipsEnabled&&(lipStart!=0||current==10)){
+                float age=now-lipStart,duration=period*8;
+                float strength=current==10?1:clamp(Math.min(age/200f,(duration-age)/400f),0,1)*music;
+                if(strength>0)lipLayer.draw(c,getWidth(),getHeight(),mouthOpen*freshness,mouthRound,pulse,hue,strength,current==10);
+            }
         }
+        if(!active&&current==10&&lipsEnabled)lipLayer.draw(c,getWidth(),getHeight(),0,.5f,0,hue,1,true);
         c.restore();
         touch.draw(c,now,quality,glowScale);
         if(active||interactive||mode==3)postInvalidateOnAnimation();
@@ -213,6 +212,7 @@ public final class PsychedelicView extends View {
             case 1:tunnel(c,r);break;case 2:kaleido(c,r);break;case 3:plasma(c,r);break;
             case 4:fractal(c,r);break;case 5:helix(c,r);break;case 6:singularity(c,r);break;
             case 7:moire(c,r);break;case 8:crystals(c,r);break;case 9:alien(c,r);break;
+            case 10:tunnel(c,r);break;case 11:moire(c,r);break;
             default:mandala(c,r);
         }
     }

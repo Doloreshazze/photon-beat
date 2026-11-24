@@ -51,7 +51,7 @@ public class MainActivity extends Activity {
         LinearLayout options = new LinearLayout(this);
         controls.addView(options);
         Spinner modes = new Spinner(this);
-        String[] names={"Авто","Мандала","Туннель","Калейдоскоп","Плазма","Фрактал","Спирали","Сингулярность","Интерференция","Кристаллы","Ксеноморф"};
+        String[] names={"Авто","Мандала","Туннель","Калейдоскоп","Плазма","Фрактал","Спирали","Сингулярность","Интерференция","Кристаллы","Ксеноморф","Поющие губы","Танцпол"};
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this,android.R.layout.simple_spinner_item,names);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         modes.setAdapter(adapter);
@@ -75,10 +75,18 @@ public class MainActivity extends Activity {
         });
         Switch dancers=new Switch(this);
         dancers.setTextColor(Color.WHITE);
-        dancers.setText("Танцующие силуэты");
+        dancers.setText("Танцоры в такт");
         dancers.setChecked(true);
         dancers.setOnCheckedChangeListener((button,on)->visual.setDancersEnabled(on));
-        controls.addView(dancers);
+        LinearLayout characters=new LinearLayout(this);
+        controls.addView(characters);
+        characters.addView(dancers,new LinearLayout.LayoutParams(0,-2,1));
+        Switch lips=new Switch(this);
+        lips.setTextColor(Color.WHITE);
+        lips.setText("Поющие губы");
+        lips.setChecked(true);
+        lips.setOnCheckedChangeListener((button,on)->visual.setLipsEnabled(on));
+        characters.addView(lips,new LinearLayout.LayoutParams(0,-2,1));
         TextView label=new TextView(this);
         label.setTextColor(Color.WHITE);
         label.setText("Чувствительность / интенсивность");
@@ -161,7 +169,7 @@ public class MainActivity extends Activity {
         CaptureService.Spectrum sample=CaptureService.spectrum;
         if(active&&sample.sequence!=lastAudioSequence){
             lastAudioSequence=sample.sequence;
-            beat=visual.audio(sample.bass,sample.mid,sample.high,now);
+            beat=visual.audio(sample,now);
         }
         if(!active)lastAudioSequence=-1;
         if(torch&&(!active||now-lastTorch>=90))setTorch(false);
