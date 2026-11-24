@@ -72,6 +72,12 @@ public class MainActivity extends Activity {
             else if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED)
                 requestPermissions(new String[]{Manifest.permission.CAMERA},2);
         });
+        Switch dancers=new Switch(this);
+        dancers.setTextColor(Color.WHITE);
+        dancers.setText("Танцующие силуэты");
+        dancers.setChecked(true);
+        dancers.setOnCheckedChangeListener((button,on)->visual.setDancersEnabled(on));
+        controls.addView(dancers);
         TextView label=new TextView(this);
         label.setTextColor(Color.WHITE);
         label.setText("Чувствительность / интенсивность");

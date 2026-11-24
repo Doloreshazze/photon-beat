@@ -25,6 +25,11 @@ public final class PsychedelicView extends View {
     private long lastBeat, lastAccent, lastFrame;
     private int validIntervals;
     private boolean active;
+    private boolean dancersEnabled=true;
+    private long danceStart;
+    private int danceVariant;
+    private final DanceLayer danceLayer=new DanceLayer();
+    public void setDancersEnabled(boolean value){dancersEnabled=value;invalidate();}
     public PsychedelicView(Context c){super(c);setClickable(true);setContentDescription("Динамический музыкальный визуализатор");
         java.util.Random rng=new java.util.Random(8831);
         for(int i=0;i<stars.length;i++)stars[i]=rng.nextFloat();
@@ -35,7 +40,7 @@ public final class PsychedelicView extends View {
     public void setActive(boolean on){
         if(on==active)return;
         active=on;
-        if(!on){bass=mid=high=pulse=accent=0;lastBeat=lastAccent=0;tempo=0;validIntervals=beatCount=0;scene=0;prevB=prevM=prevH=0;fluxAvg=.002f;floorB=.004f;floorM=.003f;floorH=.002f;peakB=.035f;peakM=.025f;peakH=.015f;for(int i=0;i<ripple.length;i++)ripple[i]=0;}
+        if(!on){danceStart=0; danceVariant=0;bass=mid=high=pulse=accent=0;lastBeat=lastAccent=0;tempo=0;validIntervals=beatCount=0;scene=0;prevB=prevM=prevH=0;fluxAvg=.002f;floorB=.004f;floorM=.003f;floorH=.002f;peakB=.035f;peakM=.025f;peakH=.015f;for(int i=0;i<ripple.length;i++)ripple[i]=0;}
         lastFrame=0;invalidate();
     }
     private static float clamp(float v,float lo,float hi){return Math.max(lo,Math.min(hi,v));}
@@ -68,6 +73,7 @@ public final class PsychedelicView extends View {
             ripple[rippleIndex]=now;rippleHue[rippleIndex]=targetHue;
             rippleIndex=(rippleIndex+1)%ripple.length;
             if(beatCount%8==0)scene=(scene+1)%SCENES;
+            if(beatCount%24==8){danceStart=now;danceVariant=(danceVariant+1)%3;}
         }
         fluxAvg=mix(fluxAvg,flux,.055f);prevB=b;prevM=m;prevH=h;
         return beat;
@@ -108,7 +114,18 @@ public final class PsychedelicView extends View {
         if(fade<1){opacity=1-fade;renderScene(c,r,previousScene);}
         opacity=fade;renderScene(c,r,current);opacity=1;
         c.restore();
-        if(active){starField(c,r);ripples(c,r,now);}
+        if(active){starField(c,r);ripples(c,r,now);
+            if(dancersEnabled&&danceStart!=0){
+                float period=tempo>0?60000f/tempo:500f;
+                float duration=clamp(period*8,2700,6400);
+                float age=now-danceStart;
+                float strength=clamp(Math.min(age/500f,(duration-age)/700f),0,1);
+                if(strength>0){
+                    float dancePhase=(beatCount+(lastBeat==0?0:clamp((now-lastBeat)/period,0,1)))*PI;
+                    danceLayer.draw(c,getWidth(),getHeight(),dancePhase,pulse,mid,hue,strength,danceVariant);
+                }
+            }
+        }
         c.restore();
         if(active)postInvalidateOnAnimation();
     }
