@@ -144,7 +144,7 @@ public final class PsychedelicView extends View {
         touchTwist*=Math.exp(-dt*2.3);
         touchShiftX*=Math.exp(-dt*3.5);
         touchShiftY*=Math.exp(-dt*3.5);
-        if(active||interactive){
+        if(active||interactive||mode==3){
             frameMs=mix(frameMs,Math.min(raw,180),.08f);
             if(automaticQuality&&++qualityFrames>=45){
                 if(frameMs>24&&quality>0)quality--;
@@ -167,7 +167,7 @@ public final class PsychedelicView extends View {
             float delta=(targetHue-hue+540)%360-180;
             hue=(hue+delta*Math.min(1,dt*7)+360)%360;
         }
-        if(!active&&interactive){
+        if(!active&&(interactive||mode==3)){
             phase+=dt*speed*.75f;
             spin+=dt*speed*.22f;
             float delta=(targetHue-hue+540)%360-180;
@@ -180,7 +180,7 @@ public final class PsychedelicView extends View {
         if(current!=shownScene){previousScene=shownScene;shownScene=current;sceneStart=now;}
         glowScale=Math.max(1,Math.min(2.5f,r/480f));
         opacity=1;
-        backdrop(c,r);
+        if(current!=2)backdrop(c,r);
         c.save();
         float zoom=1+.075f*bass+.17f*pulse+.095f*touchPulse;
         c.translate(touchShiftX,touchShiftY);
@@ -192,7 +192,7 @@ public final class PsychedelicView extends View {
         c.scale(reveal,reveal);
         renderScene(c,r,current);
         c.restore();
-        if(active){starField(c,r);ripples(c,r,now);
+        if(active){if(current!=2)starField(c,r);ripples(c,r,now);
             if(dancersEnabled&&danceStart!=0){
                 float period=tempo>0?60000f/tempo:500f;
                 float duration=clamp(period*8,2700,6400);
@@ -206,7 +206,7 @@ public final class PsychedelicView extends View {
         }
         c.restore();
         touch.draw(c,now,quality,glowScale);
-        if(active||interactive)postInvalidateOnAnimation();
+        if(active||interactive||mode==3)postInvalidateOnAnimation();
     }
     private void renderScene(Canvas c,float r,int s){
         switch(s){
@@ -417,23 +417,91 @@ public final class PsychedelicView extends View {
             line(c,.8f+accent,hue+180+i*13,.85f,155);c.drawPath(path,paint);
         }
     }
-    private void kaleido(Canvas c,float r){
-        float unit=r*.88f*(1+.10f*pulse);
-        for(int sector=0;sector<(quality==0?12:16);sector++){
-            c.save();c.rotate(sector*(quality==0?30f:22.5f)+spin*28);
-            if(sector%2==1)c.scale(1,-1);
-            for(int j=0;j<(quality==2?8:6);j++){
-                float f=(j+1)/(quality==2?8f:6f), d=unit*f;
-                float wig=(float)sin(phase*1.3+j*.7f)*.075f;
-                path.reset();path.moveTo(d*.28f,0);path.lineTo(d*.74f,d*(.11f+wig));
-                path.lineTo(d,d*.035f);path.lineTo(d*.74f,-d*(.11f+wig));path.close();
-                paint.setStyle(Paint.Style.FILL);paint.setColor(color(hue+j*48+sector%2*180,1,.32f+.28f*mid,115));c.drawPath(path,paint);
-                neon(c,hue+j*48+sector%2*180,.8f+high*.8f,220);
-                path.reset();path.moveTo(d*.43f,0);path.quadTo(d*.8f,d*.19f,d,0);
-                line(c,.8f+accent,hue+j*48+180,1,200);c.drawPath(path,paint);
-            }
-            c.restore();
+    // Construct one wedge and reflect it into a complete optical kaleidoscope.
+    // Batch each layer into one Path to keep Canvas draw calls low.
+    private final Path mirrorBatch=new Path();
+    private final Matrix mirrorMatrix=new Matrix();
+    private void mirrorWedge(int pairs){
+        mirrorBatch.rewind();
+        for(int i=0;i<pairs;i++){
+            float angle=360f*i/pairs;
+            mirrorMatrix.setRotate(angle);
+            mirrorBatch.addPath(path,mirrorMatrix);
+            mirrorMatrix.setScale(1,-1);
+            mirrorMatrix.postRotate(angle);
+            mirrorBatch.addPath(path,mirrorMatrix);
         }
+    }
+    private void kaleido(Canvas c,float r){
+        int pairs=6+2*((beatCount/16)%4); // 12, 16, 20 or 24 mirrored wedges
+        int layers=quality==0?8:quality==1?12:16;
+        float edge=PI/pairs;
+        float scale=r*1.28f*(1+.08f*bass);
+        c.save();
+        c.rotate(spin*20f);
+        for(int j=layers-1;j>=0;j--){
+            float f=(j+1f)/layers;
+            float d=scale*f;
+            float wave=.5f+.5f*sin(phase*1.55f-f*9);
+            float fold=.24f+.56f*wave;
+            float a=edge*fold;
+            float inner=Math.max(0,d-scale*(.15f+.06f*mid));
+            float outer=d*(1+.08f*sin(phase-f*13));
+            float peak=d*(.88f+.10f*pulse);
+            float h=hue+f*290+40*sin(phase*.45f-f*6);
+            // Colored glass facets; the neighboring wedge is an exact reflection.
+            path.rewind();
+            path.moveTo(inner,0);
+            path.lineTo(peak*cos(a),peak*sin(a));
+            path.lineTo(outer*cos(edge),outer*sin(edge));
+            path.lineTo(d*cos(edge*.67f),d*sin(edge*.67f));
+            path.lineTo(d,0);
+            path.close();
+            mirrorWedge(pairs);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(color(h,.88f,.36f+.20f*mid,155));
+            c.drawPath(mirrorBatch,paint);
+            line(c,.8f+high*.45f,h,1,220);
+            c.drawPath(mirrorBatch,paint);
+            // Curved filigree bends within the wedge without breaking symmetry.
+            path.rewind();
+            float v=edge*(.12f+.70f*wave);
+            path.moveTo(inner,0);
+            path.cubicTo(d*.73f*cos(v),d*.73f*sin(v),
+                d*.96f*cos(edge*.90f),d*.96f*sin(edge*.90f),
+                outer*cos(edge),outer*sin(edge));
+            path.moveTo(d*.78f*cos(edge),d*.78f*sin(edge));
+            path.quadTo(d*.85f*cos(v),d*.85f*sin(v),d,0);
+            mirrorWedge(pairs);
+            if(quality>0){
+                line(c,3.4f*glowScale,h+105,.75f,55);
+                c.drawPath(mirrorBatch,paint);
+            }
+            line(c,(.65f+high*.6f)*glowScale,h+105,1,210);
+            c.drawPath(mirrorBatch,paint);
+            // Small mirrored jewels drift along the facet.
+            float jewel=d*(.85f+.11f*sin(phase*2-f*18));
+            float ja=edge*(.17f+.65f*wave);
+            path.rewind();
+            path.addCircle(jewel*cos(ja),jewel*sin(ja),
+                glowScale*(1.3f+2.2f*high+1.5f*touchPulse),Path.Direction.CW);
+            mirrorWedge(pairs);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(color(h+170,.55f,1,205));
+            c.drawPath(mirrorBatch,paint);
+        }
+        // Central jewel: same axes as the surrounding glass.
+        path.rewind();
+        float core=r*(.028f+.026f*bass+.026f*touchPulse);
+        path.moveTo(0,0);
+        path.lineTo(core*1.8f,0);
+        path.lineTo(core*cos(edge),core*sin(edge));
+        path.close();
+        mirrorWedge(pairs);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(color(hue+60,.62f,.92f,225));
+        c.drawPath(mirrorBatch,paint);
+        c.restore();
     }
     private void plasma(Canvas c,float r){
         for(int j=0;j<(quality==0?12:quality==1?18:24);j++){
