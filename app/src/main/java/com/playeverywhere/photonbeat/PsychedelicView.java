@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.*;
 import android.os.SystemClock;
 import android.view.View;
+import android.view.MotionEvent;
 
 /** Music-reactive vector renderer. Black background remains stable; motion carries the beat. */
 public final class PsychedelicView extends View {
@@ -25,6 +26,40 @@ public final class PsychedelicView extends View {
     private long lastBeat, lastAccent, lastFrame;
     private int validIntervals;
     private boolean active;
+    private final TouchLayer touch=new TouchLayer();
+    private float touchTwist,touchShiftX,touchShiftY,touchPulse;
+    private Runnable menuAction;
+    private boolean multiGesture;
+    public void setMenuAction(Runnable action){menuAction=action;}
+    @Override public boolean performClick(){super.performClick();return true;}
+    @Override public boolean onTouchEvent(MotionEvent e){
+        final int action=e.getActionMasked(), idx=e.getActionIndex();
+        final long now=SystemClock.elapsedRealtime();
+        if(action==MotionEvent.ACTION_DOWN){
+            multiGesture=false;touch.down(e.getPointerId(0),e.getX(),e.getY(),hue,now);
+            touchPulse=1;targetHue=(targetHue+38)%360;
+            getParent().requestDisallowInterceptTouchEvent(true);
+        }else if(action==MotionEvent.ACTION_POINTER_DOWN){
+            multiGesture=true;
+            touch.down(e.getPointerId(idx),e.getX(idx),e.getY(idx),hue+80,now);
+        }else if(action==MotionEvent.ACTION_MOVE){
+            for(int i=0;i<e.getPointerCount();i++){
+                int id=e.getPointerId(i);
+                float x=e.getX(i),y=e.getY(i);
+                touch.move(id,x,y,hue+id*45,now);
+            }
+            touchTwist=clamp(touchTwist+touch.consumeSpin()/Math.max(100,getWidth()),-1.3f,1.3f);
+            touchShiftX=clamp(touchShiftX+touch.consumeDx()*.26f,-getWidth()*.16f,getWidth()*.16f);
+            touchShiftY=clamp(touchShiftY+touch.consumeDy()*.26f,-getHeight()*.13f,getHeight()*.13f);
+        }else if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_POINTER_UP){
+            boolean menu=touch.up(e.getPointerId(idx),e.getX(idx),e.getY(idx),hue,now,!multiGesture);
+            if(menu&&menuAction!=null){performClick();menuAction.run();}
+            if(action==MotionEvent.ACTION_UP)getParent().requestDisallowInterceptTouchEvent(false);
+        }else if(action==MotionEvent.ACTION_CANCEL){
+            touch.cancel();getParent().requestDisallowInterceptTouchEvent(false);
+        }
+        postInvalidateOnAnimation();return true;
+    }
     private float frameMs=16.7f, danceClock=0, speed=1.65f;
     private int quality=1, qualityFrames;
     private boolean automaticQuality=true;
@@ -104,7 +139,12 @@ public final class PsychedelicView extends View {
         float raw=lastFrame==0?16.7f:Math.max(1,now-lastFrame);
         lastFrame=now;
         float dt=clamp(raw*.001f,0,.16f);
-        if(active){
+        boolean interactive=touch.isAlive(now)||Math.abs(touchTwist)+Math.abs(touchShiftX)+Math.abs(touchShiftY)+touchPulse>.025f;
+        touchPulse*=Math.exp(-dt*5.5);
+        touchTwist*=Math.exp(-dt*2.3);
+        touchShiftX*=Math.exp(-dt*3.5);
+        touchShiftY*=Math.exp(-dt*3.5);
+        if(active||interactive){
             frameMs=mix(frameMs,Math.min(raw,180),.08f);
             if(automaticQuality&&++qualityFrames>=45){
                 if(frameMs>24&&quality>0)quality--;
@@ -127,6 +167,12 @@ public final class PsychedelicView extends View {
             float delta=(targetHue-hue+540)%360-180;
             hue=(hue+delta*Math.min(1,dt*7)+360)%360;
         }
+        if(!active&&interactive){
+            phase+=dt*speed*.75f;
+            spin+=dt*speed*.22f;
+            float delta=(targetHue-hue+540)%360-180;
+            hue=(hue+delta*Math.min(1,dt*7)+360)%360;
+        }
         float cx=getWidth()*.5f,cy=getHeight()*.5f, r=(float)Math.hypot(cx,cy);
         if(r<1)return;
         c.save();c.translate(cx,cy);
@@ -136,7 +182,9 @@ public final class PsychedelicView extends View {
         opacity=1;
         backdrop(c,r);
         c.save();
-        float zoom=1+.075f*bass+.17f*pulse;
+        float zoom=1+.075f*bass+.17f*pulse+.095f*touchPulse;
+        c.translate(touchShiftX,touchShiftY);
+        c.rotate(touchTwist*32);
         c.scale(zoom,zoom);
         // Single-scene transition: avoids doubling GPU/CPU load at a beat.
         float fade=active&&previousScene>=0?clamp((now-sceneStart)/220f,0,1):1;
@@ -157,7 +205,8 @@ public final class PsychedelicView extends View {
             }
         }
         c.restore();
-        if(active)postInvalidateOnAnimation();
+        touch.draw(c,now,quality,glowScale);
+        if(active||interactive)postInvalidateOnAnimation();
     }
     private void renderScene(Canvas c,float r,int s){
         switch(s){

@@ -110,9 +110,9 @@ public class MainActivity extends Activity {
         performance.addView(speed,new LinearLayout.LayoutParams(0,-2,1));
         TextView hint=new TextView(this);
         hint.setTextColor(0xffaaaaaa); hint.setTextSize(11);
-        hint.setText("Динамические контрастные узоры. При дискомфорте остановите просмотр. Коснитесь узора для выхода из полноэкранного режима.");
+        hint.setText("Динамические контрастные узоры. При дискомфорте остановите просмотр. Тап — взрыв, свайп — неоновый след, удержание — меню.");
         controls.addView(hint);
-        visual.setOnClickListener(v->fullscreen(controls.getVisibility()!=View.GONE));
+        visual.setMenuAction(()->fullscreen(controls.getVisibility()!=View.GONE));
         setContentView(root);
         cam=getSystemService(CameraManager.class);
         try{for(String id:cam.getCameraIdList())if(Boolean.TRUE.equals(cam.getCameraCharacteristics(id).get(CameraCharacteristics.FLASH_INFO_AVAILABLE))){camera=id;break;}}catch(Exception ignored){}
