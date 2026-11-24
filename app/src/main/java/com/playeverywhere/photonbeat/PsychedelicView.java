@@ -25,6 +25,18 @@ public final class PsychedelicView extends View {
     private long lastBeat, lastAccent, lastFrame;
     private int validIntervals;
     private boolean active;
+    private float frameMs=16.7f, danceClock=0, speed=1.65f;
+    private int quality=1, qualityFrames;
+    private boolean automaticQuality=true;
+    private final Path[] branches={new Path(),new Path(),new Path(),new Path(),new Path()};
+    private static final int LUT_SIZE=4096;
+    private static final float[] SIN=new float[LUT_SIZE];
+    static {for(int i=0;i<LUT_SIZE;i++)SIN[i]=(float)Math.sin(i*TAU/LUT_SIZE);}
+    private static float sin(double a){return SIN[(int)Math.round(a*(LUT_SIZE/TAU))&(LUT_SIZE-1)];}
+    private static float cos(double a){return sin(a+PI*.5);}
+    public void setSpeed(float value){speed=value;}
+    public void setQuality(int value){automaticQuality=value==0;quality=value==0?1:value-1;qualityFrames=0;invalidate();}
+    public String fpsText(){return Math.round(1000/Math.max(1,frameMs))+" FPS · "+(quality==0?"Лёгкий":quality==1?"Баланс":"Детальный");}
     private boolean dancersEnabled=true;
     private long danceStart;
     private int danceVariant;
@@ -33,19 +45,19 @@ public final class PsychedelicView extends View {
     public PsychedelicView(Context c){super(c);setClickable(true);setContentDescription("Динамический музыкальный визуализатор");
         java.util.Random rng=new java.util.Random(8831);
         for(int i=0;i<stars.length;i++)stars[i]=rng.nextFloat();
-        for(int i=0;i<192;i++){float a=TAU*i/192;trigX[i]=(float)Math.cos(a);trigY[i]=(float)Math.sin(a);}
+        for(int i=0;i<192;i++){float a=TAU*i/192;trigX[i]=(float)cos(a);trigY[i]=(float)sin(a);}
     }
     public void setMode(int m){mode=m;invalidate();}
     public void setIntensity(float v){intensity=v;}
     public void setActive(boolean on){
         if(on==active)return;
         active=on;
-        if(!on){danceStart=0; danceVariant=0;bass=mid=high=pulse=accent=0;lastBeat=lastAccent=0;tempo=0;validIntervals=beatCount=0;scene=0;prevB=prevM=prevH=0;fluxAvg=.002f;floorB=.004f;floorM=.003f;floorH=.002f;peakB=.035f;peakM=.025f;peakH=.015f;for(int i=0;i<ripple.length;i++)ripple[i]=0;}
+        if(!on){danceClock=0;frameMs=16.7f;qualityFrames=0;danceStart=0; danceVariant=0;bass=mid=high=pulse=accent=0;lastBeat=lastAccent=0;tempo=0;validIntervals=beatCount=0;scene=0;prevB=prevM=prevH=0;fluxAvg=.002f;floorB=.004f;floorM=.003f;floorH=.002f;peakB=.035f;peakM=.025f;peakH=.015f;for(int i=0;i<ripple.length;i++)ripple[i]=0;}
         lastFrame=0;invalidate();
     }
     private static float clamp(float v,float lo,float hi){return Math.max(lo,Math.min(hi,v));}
     private static float mix(float a,float b,float k){return a+(b-a)*k;}
-    private static float follow(float old,float target){return mix(old,target,target>old?.55f:.14f);}
+    private static float follow(float old,float target){return mix(old,target,target>old?.82f:.27f);}
     public boolean audio(float b,float m,float h,long now){
         if(!active)return false;
         float oldFloor=floorB;
@@ -56,8 +68,8 @@ public final class PsychedelicView extends View {
         high=follow(high,clamp(h/Math.max(.005f,peakH)*intensity,0,1.5f));
         float flux=Math.max(0,b-prevB)+.28f*Math.max(0,m-prevM)+.12f*Math.max(0,h-prevH);
         float rise=b-prevB;
-        boolean beat=now-lastBeat>=245 && b>Math.max(.007f,oldFloor*1.18f)
-            && rise>Math.max(.0018f,oldFloor*.09f) && flux>Math.max(.0025f,fluxAvg*1.65f);
+        boolean beat=now-lastBeat>=210 && b>Math.max(.007f,oldFloor*1.10f)
+            && rise>Math.max(.0009f,oldFloor*.055f) && flux>Math.max(.0014f,fluxAvg*1.35f);
         boolean treble=now-lastAccent>=110 && h>Math.max(.003f,floorH*1.12f)&&h-prevH>Math.max(.0012f,floorH*.16f);
         if(treble){accent=1;lastAccent=now;}
         if(beat){
@@ -89,11 +101,28 @@ public final class PsychedelicView extends View {
     @Override protected void onDraw(Canvas c){
         super.onDraw(c);c.drawColor(0xff020208);
         long now=SystemClock.elapsedRealtime();
-        float dt=lastFrame==0?.016f:clamp((now-lastFrame)*.001f,0,.05f);lastFrame=now;
+        float raw=lastFrame==0?16.7f:Math.max(1,now-lastFrame);
+        lastFrame=now;
+        float dt=clamp(raw*.001f,0,.16f);
         if(active){
-            pulse*=Math.exp(-dt*4.6);accent*=Math.exp(-dt*8);
-            phase+=dt*(.65f+mid*1.9f+bass*.65f);
-            spin+=dt*(.16f+mid*.65f+pulse*1.15f);
+            frameMs=mix(frameMs,Math.min(raw,180),.08f);
+            if(automaticQuality&&++qualityFrames>=45){
+                if(frameMs>24&&quality>0)quality--;
+                else if(frameMs<15.5f&&quality<2)quality++;
+                qualityFrames=0;
+            }
+        }
+        if(active){
+            pulse*=Math.exp(-dt*7);accent*=Math.exp(-dt*12);
+            phase+=dt*speed*(.9f+mid*2.5f+bass*1.15f+pulse*1.1f);
+            spin+=dt*speed*(.25f+mid*.9f+pulse*1.65f);
+            float bpm=tempo>0?tempo:120;
+            float desired=beatCount*PI;
+            float error=(desired-danceClock+PI*2)%(PI*2);
+            if(error>PI)error-=PI*2;
+            if(error<-PI)error+=PI*2;
+            danceClock+=dt*(bpm*PI/60f+error*pulse*2.0f);
+            if(danceClock>PI*4)danceClock-=PI*4;
             targetHue=(targetHue+dt*(5+high*13))%360;
             float delta=(targetHue-hue+540)%360-180;
             hue=(hue+delta*Math.min(1,dt*7)+360)%360;
@@ -107,12 +136,13 @@ public final class PsychedelicView extends View {
         opacity=1;
         backdrop(c,r);
         c.save();
-        float zoom=1+.065f*bass+.08f*pulse;
+        float zoom=1+.075f*bass+.17f*pulse;
         c.scale(zoom,zoom);
-        float fade=active&&previousScene>=0?clamp((now-sceneStart)/700f,0,1):1;
-        fade=fade*fade*(3-2*fade);
-        if(fade<1){opacity=1-fade;renderScene(c,r,previousScene);}
-        opacity=fade;renderScene(c,r,current);opacity=1;
+        // Single-scene transition: avoids doubling GPU/CPU load at a beat.
+        float fade=active&&previousScene>=0?clamp((now-sceneStart)/220f,0,1):1;
+        float reveal=.72f+.28f*fade;
+        c.scale(reveal,reveal);
+        renderScene(c,r,current);
         c.restore();
         if(active){starField(c,r);ripples(c,r,now);
             if(dancersEnabled&&danceStart!=0){
@@ -121,7 +151,7 @@ public final class PsychedelicView extends View {
                 float age=now-danceStart;
                 float strength=clamp(Math.min(age/500f,(duration-age)/700f),0,1);
                 if(strength>0){
-                    float dancePhase=(beatCount+(lastBeat==0?0:clamp((now-lastBeat)/period,0,1)))*PI;
+                    float dancePhase=danceClock;
                     danceLayer.draw(c,getWidth(),getHeight(),dancePhase,pulse,mid,hue,strength,danceVariant);
                 }
             }
@@ -138,52 +168,54 @@ public final class PsychedelicView extends View {
         }
     }
     private void neon(Canvas c,float h,float w,int a){
-        line(c,w*glowScale*5,h,.52f,a/8);c.drawPath(path,paint);
-        line(c,w*glowScale*2.5f,h,.9f,a/3);c.drawPath(path,paint);
+        if(quality==2){line(c,w*glowScale*5,h,.52f,a/8);c.drawPath(path,paint);}
+        if(quality>=1){line(c,w*glowScale*2.6f,h,.9f,a/3);c.drawPath(path,paint);}
         line(c,w*glowScale,h,1,a);c.drawPath(path,paint);
     }
     private void backdrop(Canvas c,float r){
         paint.setStyle(Paint.Style.FILL);
-        for(int i=9;i>=0;i--){
+        for(int i=5;i>=0;i--){
             paint.setColor(color(hue+240+i*8,.9f,.12f,9+(int)(mid*5)));
-            c.drawCircle(0,0,r*(.18f+i*.095f),paint);
+            c.drawCircle(0,0,r*(.18f+i*.17f),paint);
         }
         for(int i=0;i<48;i++){
             float a=i*TAU/48+spin*.15f;
-            float d=r*(.23f+.08f*(float)Math.sin(i*.9+phase));
+            float d=r*(.23f+.08f*(float)sin(i*.9+phase));
             line(c,.7f*glowScale,hue+i*7,.5f,23);
-            c.drawLine(d*(float)Math.cos(a),d*(float)Math.sin(a),r*(float)Math.cos(a),r*(float)Math.sin(a),paint);
+            c.drawLine(d*(float)cos(a),d*(float)sin(a),r*(float)cos(a),r*(float)sin(a),paint);
         }
     }
     private void starField(Canvas c,float r){
-        for(int i=0;i<stars.length;i+=4){
+        for(int i=0;i<stars.length;i+=(quality==0?12:quality==1?8:4)){
             float a=stars[i]*TAU+spin*(.2f+stars[i+1]*.5f);
             float f=(stars[i+1]+phase*(.055f+stars[i+2]*.07f))%1;
             float rad=r*(.04f+1.12f*f*f);
-            float x=rad*(float)Math.cos(a),y=rad*(float)Math.sin(a);
+            float x=rad*(float)cos(a),y=rad*(float)sin(a);
             float trail=(.014f+.055f*pulse+.025f*high)*f;
             float tail=Math.max(0,rad-r*trail);
             line(c,(.6f+stars[i+3]*1.5f)*glowScale,hue+stars[i+2]*280,1,(int)(130*f));
-            c.drawLine(tail*(float)Math.cos(a-.045f),tail*(float)Math.sin(a-.045f),x,y,paint);
+            c.drawLine(tail*(float)cos(a-.045f),tail*(float)sin(a-.045f),x,y,paint);
             paint.setStyle(Paint.Style.FILL);paint.setColor(color(hue+stars[i+2]*280,.6f,1,(int)(170*f)));
             c.drawCircle(x,y,glowScale*(.7f+stars[i+3]*1.6f+accent),paint);
         }
     }
     private void fractal(Canvas c,float r){
-        for(int k=0;k<12;k++){
-            float a=k*TAU/12+spin*.45f;
-            c.save();c.rotate(a*180/PI);
-            branch(c,r*.67f,0,0,0,4,k*30+hue);
-            c.restore();
+        int count=quality==0?8:12;
+        int depth=quality==2?4:3;
+        for(Path b:branches)b.rewind();
+        for(int k=0;k<count;k++)branch(c,r*.48f,0,0,k*TAU/count+spin*.45f,depth,k*30+hue);
+        for(int d=0;d<=depth;d++){
+            Path b=branches[d];
+            if(quality>0){line(c,3.4f*glowScale,hue+d*55,.75f,52);c.drawPath(b,paint);}
+            line(c,(.7f+d*.27f+high*.35f)*glowScale,hue+d*55,1,220);c.drawPath(b,paint);
         }
     }
     private void branch(Canvas c,float len,float x,float y,float a,int depth,float h){
-        float ex=x+len*(float)Math.cos(a),ey=y+len*(float)Math.sin(a);
-        path.reset();path.moveTo(x,y);
-        path.quadTo(x+len*.55f*(float)Math.cos(a+.12f*(float)Math.sin(phase)),y+len*.55f*(float)Math.sin(a+.12f*(float)Math.sin(phase)),ex,ey);
-        neon(c,h, .55f+depth*.28f+high*.3f,195);
+        float ex=x+len*(float)cos(a),ey=y+len*(float)sin(a);
+        Path b=branches[depth];b.moveTo(x,y);
+        b.quadTo(x+len*.55f*(float)cos(a+.12f*(float)sin(phase)),y+len*.55f*(float)sin(a+.12f*(float)sin(phase)),ex,ey);
         if(depth==0)return;
-        float spread=.38f+.19f*(float)Math.sin(phase+depth*.7f)+.13f*bass;
+        float spread=.38f+.19f*(float)sin(phase+depth*.7f)+.13f*bass;
         branch(c,len*.52f,ex,ey,a+spread,depth-1,h+38);
         branch(c,len*.52f,ex,ey,a-spread,depth-1,h-38);
     }
@@ -191,18 +223,18 @@ public final class PsychedelicView extends View {
         for(int k=0;k<14;k++){
             float off=k*TAU/14;
             path.reset();
-            for(int j=0;j<=180;j++){
+            for(int j=0;j<=180;j+=quality==2?1:2){
                 float f=j/180f,a=off+f*TAU*2.4f-spin*1.2f;
-                float d=r*(.045f+f*.94f)*(1+.10f*(float)Math.sin(f*17-phase));
-                float x=d*(float)Math.cos(a),y=d*(float)Math.sin(a);
+                float d=r*(.045f+f*.94f)*(1+.10f*(float)sin(f*17-phase));
+                float x=d*(float)cos(a),y=d*(float)sin(a);
                 if(j==0)path.moveTo(x,y);else path.lineTo(x,y);
             }
             neon(c,hue+k*26,1.1f+high*.65f,210);
             for(int j=1;j<=12;j++){
                 float f=j/13f,a=off+f*TAU*2.4f-spin*1.2f;
-                float d=r*(.045f+f*.94f)*(1+.10f*(float)Math.sin(f*17-phase));
+                float d=r*(.045f+f*.94f)*(1+.10f*(float)sin(f*17-phase));
                 paint.setStyle(Paint.Style.FILL);paint.setColor(color(hue+k*26+160,.8f,1,180));
-                c.drawCircle(d*(float)Math.cos(a),d*(float)Math.sin(a),glowScale*(1.2f+high*1.8f),paint);
+                c.drawCircle(d*(float)cos(a),d*(float)sin(a),glowScale*(1.2f+high*1.8f),paint);
             }
         }
     }
@@ -211,11 +243,11 @@ public final class PsychedelicView extends View {
             float f=(k+phase*.7f)%24/24f;
             float rad=r*(.055f+f*f*1.18f);
             path.reset();
-            for(int i=0;i<=144;i++){
+            for(int i=0;i<=144;i+=quality==2?1:2){
                 float a=TAU*i/144;
-                float d=rad*(1+.16f*(float)Math.sin(a*5+phase+f*12));
+                float d=rad*(1+.16f*(float)sin(a*5+phase+f*12));
                 float angle=a+spin+f*4;
-                float x=d*(float)Math.cos(angle),y=d*(float)Math.sin(angle)*(.56f+.35f*f);
+                float x=d*(float)cos(angle),y=d*(float)sin(angle)*(.56f+.35f*f);
                 if(i==0)path.moveTo(x,y);else path.lineTo(x,y);
             }
             path.close();neon(c,hue+f*280, .7f+f*2+high*.3f,(int)(130+f*90));
@@ -230,12 +262,12 @@ public final class PsychedelicView extends View {
     private void moire(Canvas c,float r){
         for(int k=0;k<3;k++){
             c.save();c.rotate(k*60+spin*(k%2==0?13:-10));
-            for(int j=-14;j<=14;j++){
+            for(int j=-(quality==0?7:quality==1?10:14);j<=(quality==0?7:quality==1?10:14);j++){
                 float y=j*r/15f;
                 path.reset();
-                for(int i=0;i<=80;i++){
+                for(int i=0;i<=80;i+=quality==2?1:2){
                     float x=r*(i/40f-1);
-                    float yy=y+r*.10f*(float)Math.sin(x/r*8+phase+j*.27f)+r*.035f*(float)Math.sin(x/r*17-phase*1.3);
+                    float yy=y+r*.10f*(float)sin(x/r*8+phase+j*.27f)+r*.035f*(float)sin(x/r*17-phase*1.3);
                     if(i==0)path.moveTo(x,yy);else path.lineTo(x,yy);
                 }
                 neon(c,hue+k*120+j*4,.6f+high*.4f,115);
@@ -251,15 +283,15 @@ public final class PsychedelicView extends View {
             path.reset();
             for(int i=0;i<=sides;i++){
                 float a=a0+i*TAU/sides;
-                float x=rad*(float)Math.cos(a),y=rad*(float)Math.sin(a);
+                float x=rad*(float)cos(a),y=rad*(float)sin(a);
                 if(i==0)path.moveTo(x,y);else path.lineTo(x,y);
             }
             path.close();neon(c,hue+k*38,1.2f+high*.7f,230);
             for(int i=0;i<sides;i++){
                 float a=a0+i*TAU/sides,b=a+TAU/sides;
-                path.reset();path.moveTo(rad*(float)Math.cos(a),rad*(float)Math.sin(a));
-                path.lineTo(rad*.40f*(float)Math.cos(a+bass*.3f),rad*.40f*(float)Math.sin(a+bass*.3f));
-                path.lineTo(rad*(float)Math.cos(b),rad*(float)Math.sin(b));path.close();
+                path.reset();path.moveTo(rad*(float)cos(a),rad*(float)sin(a));
+                path.lineTo(rad*.40f*(float)cos(a+bass*.3f),rad*.40f*(float)sin(a+bass*.3f));
+                path.lineTo(rad*(float)cos(b),rad*(float)sin(b));path.close();
                 paint.setStyle(Paint.Style.FILL);paint.setColor(color(hue+k*38+i*24,1,.7f,35+(int)(mid*22)));c.drawPath(path,paint);
                 line(c,.8f*glowScale,hue+k*38+160,1,140);c.drawPath(path,paint);
             }
@@ -272,10 +304,10 @@ public final class PsychedelicView extends View {
             for(int i=0;i<=192;i++){
                 int idx=i%192;
                 float a=TAU*i/192f;
-                float wave=.67f+.19f*(float)Math.sin(a*7+phase+f*7)+.12f*(float)Math.cos(a*13-phase*.8f-f*9);
+                float wave=.67f+.19f*(float)sin(a*7+phase+f*7)+.12f*(float)cos(a*13-phase*.8f-f*9);
                 float d=r*f*wave*(1+.13f*bass);
-                float aa=a+spin*(1-f)+.32f*(float)Math.sin(a*3+f*7+phase);
-                float x=d*(float)Math.cos(aa)+r*.05f*trigX[idx],y=d*(float)Math.sin(aa)+r*.05f*trigY[idx];
+                float aa=a+spin*(1-f)+.32f*(float)sin(a*3+f*7+phase);
+                float x=d*(float)cos(aa)+r*.05f*trigX[idx],y=d*(float)sin(aa)+r*.05f*trigY[idx];
                 if(i==0)path.moveTo(x,y);else path.lineTo(x,y);
             }
             path.close();neon(c,hue+f*330, .75f+high*.5f,200);
@@ -288,11 +320,11 @@ public final class PsychedelicView extends View {
             int lobes=layer%3==0?12:layer%3==1?8:16;
             float twist=spin*(layer%2==0?1:-1)+layer*.13f;
             path.reset();
-            for(int i=0;i<=240;i++){
+            for(int i=0;i<=240;i+=quality==2?1:2){
                 float a=TAU*i/240f;
-                float wave=(float)(.68+.19*Math.cos(lobes*a+phase+layer*.6)+.13*Math.sin((lobes/2)*a-phase*1.7));
+                float wave=(float)(.68+.19*cos(lobes*a+phase+layer*.6)+.13*sin((lobes/2)*a-phase*1.7));
                 float radius=rr*wave*(1+.14f*pulse);
-                float x=radius*(float)Math.cos(a+twist),y=radius*(float)Math.sin(a+twist);
+                float x=radius*(float)cos(a+twist),y=radius*(float)sin(a+twist);
                 if(i==0)path.moveTo(x,y);else path.lineTo(x,y);
             }
             path.close();
@@ -301,8 +333,8 @@ public final class PsychedelicView extends View {
         }
         for(int i=0;i<48;i++){
             float a=i*TAU/48-spin;
-            float d=u*(.40f+.30f*(float)Math.sin(a*6+phase));
-            float x=d*(float)Math.cos(a),y=d*(float)Math.sin(a);
+            float d=u*(.40f+.30f*(float)sin(a*6+phase));
+            float x=d*(float)cos(a),y=d*(float)sin(a);
             paint.setStyle(Paint.Style.FILL);paint.setColor(color(hue+180+i*9,.9f,1,165));
             c.drawCircle(x,y,2+high*3+accent*2,paint);
         }
@@ -316,9 +348,9 @@ public final class PsychedelicView extends View {
             path.reset();
             for(int i=0;i<=sides*5;i++){
                 float a=TAU*i/(sides*5f)+twist;
-                float k=radius*(1+.16f*(float)Math.sin(sides*a+phase*2+depth*7));
-                float x=k*(float)Math.cos(a)+r*.06f*(float)Math.sin(phase+depth*6),
-                      y=k*(float)Math.sin(a)+r*.06f*(float)Math.cos(phase+depth*6);
+                float k=radius*(1+.16f*(float)sin(sides*a+phase*2+depth*7));
+                float x=k*(float)cos(a)+r*.06f*(float)sin(phase+depth*6),
+                      y=k*(float)sin(a)+r*.06f*(float)cos(phase+depth*6);
                 if(i==0)path.moveTo(x,y);else path.lineTo(x,y);
             }
             path.close();
@@ -326,11 +358,11 @@ public final class PsychedelicView extends View {
         }
         for(int i=0;i<16;i++){
             path.reset();float a=TAU*i/16;
-            for(int j=0;j<=80;j++){
+            for(int j=0;j<=80;j+=quality==2?1:2){
                 float d=j/80f, angle=a+spin+d*3.4f;
                 float radius=r*(.045f+1.25f*d*d)*(1+.12f*pulse);
-                float x=radius*(float)Math.cos(angle)+r*.06f*(float)Math.sin(phase+d*6);
-                float y=radius*(float)Math.sin(angle)+r*.06f*(float)Math.cos(phase+d*6);
+                float x=radius*(float)cos(angle)+r*.06f*(float)sin(phase+d*6);
+                float y=radius*(float)sin(angle)+r*.06f*(float)cos(phase+d*6);
                 if(j==0)path.moveTo(x,y);else path.lineTo(x,y);
             }
             line(c,.8f+accent,hue+180+i*13,.85f,155);c.drawPath(path,paint);
@@ -338,12 +370,12 @@ public final class PsychedelicView extends View {
     }
     private void kaleido(Canvas c,float r){
         float unit=r*.88f*(1+.10f*pulse);
-        for(int sector=0;sector<16;sector++){
-            c.save();c.rotate(sector*22.5f+spin*28);
+        for(int sector=0;sector<(quality==0?12:16);sector++){
+            c.save();c.rotate(sector*(quality==0?30f:22.5f)+spin*28);
             if(sector%2==1)c.scale(1,-1);
-            for(int j=0;j<8;j++){
-                float f=(j+1)/8f, d=unit*f;
-                float wig=(float)Math.sin(phase*1.3+j*.7f)*.075f;
+            for(int j=0;j<(quality==2?8:6);j++){
+                float f=(j+1)/(quality==2?8f:6f), d=unit*f;
+                float wig=(float)sin(phase*1.3+j*.7f)*.075f;
                 path.reset();path.moveTo(d*.28f,0);path.lineTo(d*.74f,d*(.11f+wig));
                 path.lineTo(d,d*.035f);path.lineTo(d*.74f,-d*(.11f+wig));path.close();
                 paint.setStyle(Paint.Style.FILL);paint.setColor(color(hue+j*48+sector%2*180,1,.32f+.28f*mid,115));c.drawPath(path,paint);
@@ -355,15 +387,15 @@ public final class PsychedelicView extends View {
         }
     }
     private void plasma(Canvas c,float r){
-        for(int j=0;j<24;j++){
-            float off=j*TAU/24;
+        for(int j=0;j<(quality==0?12:quality==1?18:24);j++){
+            float off=j*TAU/(quality==0?12:quality==1?18:24);
             path.reset();
-            for(int i=0;i<=190;i++){
+            for(int i=0;i<=190;i+=quality==2?1:2){
                 float t=i*TAU/190f;
                 float a=t+spin*.7f;
-                float d=r*(.40f+.13f*(float)Math.sin(5*t+off+phase)+.09f*(float)Math.cos(9*t-off-phase*1.6))*(1+.13f*bass+.09f*pulse);
-                float x=d*(float)Math.cos(a)+r*.19f*(float)Math.cos(3*t+off);
-                float y=d*(float)Math.sin(a)+r*.19f*(float)Math.sin(4*t-off+phase);
+                float d=r*(.40f+.13f*(float)sin(5*t+off+phase)+.09f*(float)cos(9*t-off-phase*1.6))*(1+.13f*bass+.09f*pulse);
+                float x=d*(float)cos(a)+r*.19f*(float)cos(3*t+off);
+                float y=d*(float)sin(a)+r*.19f*(float)sin(4*t-off+phase);
                 if(i==0)path.moveTo(x,y);else path.lineTo(x,y);
             }
             path.close();
@@ -380,9 +412,9 @@ public final class PsychedelicView extends View {
             line(c,(4+7*(1-f))*glowScale,rippleHue[i],.65f,alpha/5);c.drawCircle(0,0,rad,paint);
             line(c,(1.5f+2*(1-f))*glowScale,rippleHue[i],1,alpha);c.drawCircle(0,0,rad,paint);
             path.reset();
-            for(int j=0;j<=96;j++){
-                float a=TAU*j/96, d=rad*(1+.045f*(float)Math.sin(a*12+f*8));
-                float x=d*(float)Math.cos(a),y=d*(float)Math.sin(a);
+            for(int j=0;j<=96;j+=quality==2?1:2){
+                float a=TAU*j/96, d=rad*(1+.045f*(float)sin(a*12+f*8));
+                float x=d*(float)cos(a),y=d*(float)sin(a);
                 if(j==0)path.moveTo(x,y);else path.lineTo(x,y);
             }
             path.close();neon(c,rippleHue[i]+55,1,alpha/2);

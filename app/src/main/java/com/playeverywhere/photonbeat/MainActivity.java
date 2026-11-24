@@ -21,7 +21,8 @@ public class MainActivity extends Activity {
     private CameraManager cam;
     private String camera;
     private boolean torch, mic, resumed;
-    private long lastTorch;
+    private long lastTorch, lastAudioSequence=-1, lastStatus;
+    private boolean latestBeat;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -85,6 +86,28 @@ public class MainActivity extends Activity {
         gain=new SeekBar(this);
         gain.setMax(100); gain.setProgress(70);
         controls.addView(gain,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout performance=new LinearLayout(this);
+        controls.addView(performance);
+        Spinner quality=new Spinner(this);
+        String[] levels={"FPS: Авто","FPS: Лёгкий","FPS: Баланс","FPS: Детальный"};
+        ArrayAdapter<String> qa=new ArrayAdapter<>(this,android.R.layout.simple_spinner_item,levels);
+        qa.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);quality.setAdapter(qa);
+        quality.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
+            public void onItemSelected(AdapterView<?> parent,View view,int pos,long id){
+                visual.setQuality(pos);
+                if(view instanceof TextView)((TextView)view).setTextColor(Color.WHITE);
+            }
+            public void onNothingSelected(AdapterView<?> p){}
+        });
+        performance.addView(quality,new LinearLayout.LayoutParams(0,-2,1));
+        SeekBar speed=new SeekBar(this);speed.setMax(100);speed.setProgress(55);
+        speed.setContentDescription("Скорость анимации");
+        speed.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            public void onProgressChanged(SeekBar bar,int progress,boolean user){visual.setSpeed(.65f+progress*.018f);}
+            public void onStartTrackingTouch(SeekBar bar){}
+            public void onStopTrackingTouch(SeekBar bar){}
+        });
+        performance.addView(speed,new LinearLayout.LayoutParams(0,-2,1));
         TextView hint=new TextView(this);
         hint.setTextColor(0xffaaaaaa); hint.setTextSize(11);
         hint.setText("Динамические контрастные узоры. При дискомфорте остановите просмотр. Коснитесь узора для выхода из полноэкранного режима.");
@@ -134,13 +157,22 @@ public class MainActivity extends Activity {
         boolean active=CaptureService.running&&resumed;
         visual.setActive(active);
         visual.setIntensity(.45f+gain.getProgress()*.018f);
-        boolean beat=visual.audio(active?CaptureService.bass:0,active?CaptureService.mid:0,active?CaptureService.high:0,now);
+        boolean beat=false;
+        CaptureService.Spectrum sample=CaptureService.spectrum;
+        if(active&&sample.sequence!=lastAudioSequence){
+            lastAudioSequence=sample.sequence;
+            beat=visual.audio(sample.bass,sample.mid,sample.high,now);
+        }
+        if(!active)lastAudioSequence=-1;
         if(torch&&(!active||now-lastTorch>=90))setTorch(false);
         if(active&&beat&&flash.isChecked()&&hasWindowFocus()&&now-lastTorch>=550&&checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED){
             lastTorch=now;setTorch(true);
         }
-        status.setText(active?"PHOTON BEAT  •  "+visual.getTempoText():"PHOTON BEAT  •  Выберите источник звука");
-        h.postDelayed(this,32);
+        if(now-lastStatus>=500){
+            lastStatus=now;
+            status.setText(active?visual.getTempoText()+"  •  "+visual.fpsText():"PHOTON BEAT  •  Выберите источник звука");
+        }
+        h.postDelayed(this,16);
     }};
     @Override protected void onResume(){super.onResume();resumed=true;}
     @Override protected void onPause(){resumed=false;setTorch(false);super.onPause();}

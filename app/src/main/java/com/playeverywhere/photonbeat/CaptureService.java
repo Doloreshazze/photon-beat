@@ -1,12 +1,45 @@
 package com.playeverywhere.photonbeat;
 import android.app.*;import android.content.*;import android.content.pm.ServiceInfo;import android.os.*;import android.media.*;import android.media.projection.*;
 public class CaptureService extends Service {
- public static volatile float bass,mid,high; public static volatile boolean running; AudioRecord record; MediaProjection projection; Thread worker;
+ public static volatile float bass,mid,high;
+ public static final class Spectrum { public final float bass,mid,high; public final long sequence; Spectrum(float b,float m,float h,long s){bass=b;mid=m;high=h;sequence=s;} }
+ public static volatile Spectrum spectrum=new Spectrum(0,0,0,0); public static volatile boolean running; AudioRecord record; MediaProjection projection; Thread worker;
  public IBinder onBind(Intent i){return null;}
  public int onStartCommand(Intent i,int f,int s){if(i==null||running)return START_NOT_STICKY;NotificationManager n=getSystemService(NotificationManager.class);n.createNotificationChannel(new NotificationChannel("capture","Audio capture",2));Notification note=new Notification.Builder(this,"capture").setSmallIcon(android.R.drawable.ic_media_play).setContentTitle("Photon Beat").build();boolean mic=i.getBooleanExtra("mic",false);
  try{startForeground(1,note,mic?(Build.VERSION.SDK_INT>=30?ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE:0):ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
  AudioFormat format=new AudioFormat.Builder().setSampleRate(44100).setEncoding(AudioFormat.ENCODING_PCM_16BIT).setChannelMask(AudioFormat.CHANNEL_IN_MONO).build();AudioRecord.Builder b=new AudioRecord.Builder().setAudioFormat(format).setBufferSizeInBytes(Math.max(8192,AudioRecord.getMinBufferSize(44100,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT)));
  if(mic)b.setAudioSource(MediaRecorder.AudioSource.MIC);else{projection=getSystemService(MediaProjectionManager.class).getMediaProjection(i.getIntExtra("result",0),i.getParcelableExtra("data"));projection.registerCallback(new MediaProjection.Callback(){public void onStop(){stopSelf();}},new Handler(getMainLooper()));b.setAudioPlaybackCaptureConfig(new AudioPlaybackCaptureConfiguration.Builder(projection).addMatchingUsage(AudioAttributes.USAGE_MEDIA).addMatchingUsage(AudioAttributes.USAGE_GAME).build());}
- record=b.build();record.startRecording();running=true;worker=new Thread(()->{short[] a=new short[2048];while(running){int k=record.read(a,0,a.length);if(k<0){stopSelf();break;}if(k!=a.length)continue;double[] re=new double[k],im=new double[k];for(int j=0;j<k;j++)re[j]=a[j]/32768.0*(0.5-0.5*Math.cos(2*Math.PI*j/(k-1)));for(int j=1,l=0;j<k;j++){int bit=k>>1;for(;(l&bit)!=0;bit>>=1)l^=bit;l^=bit;if(j<l){double t=re[j];re[j]=re[l];re[l]=t;}}for(int len=2;len<=k;len*=2)for(int j=0;j<k;j+=len)for(int q=0;q<len/2;q++){double ang=-2*Math.PI*q/len,c=Math.cos(ang),d=Math.sin(ang);int u=j+q,v=u+len/2;double x=re[v]*c-im[v]*d,y=re[v]*d+im[v]*c;re[v]=re[u]-x;im[v]=im[u]-y;re[u]+=x;im[u]+=y;}double lo=0,mi=0,hi=0;for(int j=2;j<k/2;j++){double m=Math.hypot(re[j],im[j])/k,hz=j*44100.0/k;if(hz<250)lo+=m*m;else if(hz<2500)mi+=m*m;else hi+=m*m;}bass=(float)Math.sqrt(lo);mid=(float)Math.sqrt(mi);high=(float)Math.sqrt(hi);}});worker.start();}catch(Exception e){stopSelf();}return START_NOT_STICKY;}
- public void onDestroy(){running=false;if(record!=null){try{record.stop();}catch(Exception e){}try{if(worker!=null)worker.join(300);}catch(Exception e){}record.release();}if(projection!=null)projection.stop();bass=mid=high=0;super.onDestroy();}
+ record=b.build();record.startRecording();running=true;worker=new Thread(()->{
+    android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
+    final int n=2048, hop=512;
+    short[] pcm=new short[n], block=new short[hop];
+    double[] re=new double[n], im=new double[n], window=new double[n], cs=new double[n/2], sn=new double[n/2];
+    int[] rev=new int[n];
+    for(int j=0;j<n;j++){window[j]=.5-.5*Math.cos(2*Math.PI*j/(n-1));rev[j]=Integer.reverse(j)>>>21;}
+    for(int j=0;j<n/2;j++){cs[j]=Math.cos(-2*Math.PI*j/n);sn[j]=Math.sin(-2*Math.PI*j/n);}
+    int filled=0;long seq=spectrum.sequence;
+    while(running){
+        int k=record.read(block,0,hop);
+        if(k<0){stopSelf();break;}if(k==0)continue;
+        System.arraycopy(pcm,k,pcm,0,n-k);System.arraycopy(block,0,pcm,n-k,k);
+        filled=Math.min(n,filled+k);if(filled<n)continue;
+        for(int j=0;j<n;j++){re[rev[j]]=pcm[j]*window[j]/32768.0;im[j]=0;}
+        for(int len=2;len<=n;len*=2){
+            int step=n/len;
+            for(int j=0;j<n;j+=len)for(int q=0;q<len/2;q++){
+                int u=j+q,v=u+len/2,idx=q*step;
+                double x=re[v]*cs[idx]-im[v]*sn[idx],y=re[v]*sn[idx]+im[v]*cs[idx];
+                re[v]=re[u]-x;im[v]=im[u]-y;re[u]+=x;im[u]+=y;
+            }
+        }
+        double lo=0,mi=0,hi=0;
+        for(int j=2;j<n/2;j++){
+            double power=(re[j]*re[j]+im[j]*im[j])/(n*(double)n),hz=j*44100.0/n;
+            if(hz<250)lo+=power;else if(hz<2500)mi+=power;else hi+=power;
+        }
+        bass=(float)Math.sqrt(lo);mid=(float)Math.sqrt(mi);high=(float)Math.sqrt(hi);
+        spectrum=new Spectrum(bass,mid,high,++seq);
+    }
+ });worker.start();}catch(Exception e){stopSelf();}return START_NOT_STICKY;}
+ public void onDestroy(){running=false;if(record!=null){try{record.stop();}catch(Exception e){}try{if(worker!=null)worker.join(300);}catch(Exception e){}record.release();}if(projection!=null)projection.stop();bass=mid=high=0;spectrum=new Spectrum(0,0,0,spectrum.sequence+1);super.onDestroy();}
 }
