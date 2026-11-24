@@ -50,7 +50,7 @@ public class MainActivity extends Activity {
         LinearLayout options = new LinearLayout(this);
         controls.addView(options);
         Spinner modes = new Spinner(this);
-        String[] names={"Авто","Мандала","Туннель","Калейдоскоп","Плазма"};
+        String[] names={"Авто","Мандала","Туннель","Калейдоскоп","Плазма","Фрактал","Спирали","Сингулярность","Интерференция","Кристаллы","Ксеноморф"};
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this,android.R.layout.simple_spinner_item,names);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         modes.setAdapter(adapter);
@@ -77,7 +77,7 @@ public class MainActivity extends Activity {
         label.setText("Чувствительность / интенсивность");
         controls.addView(label);
         gain=new SeekBar(this);
-        gain.setMax(100); gain.setProgress(55);
+        gain.setMax(100); gain.setProgress(70);
         controls.addView(gain,new LinearLayout.LayoutParams(-1,-2));
         TextView hint=new TextView(this);
         hint.setTextColor(0xffaaaaaa); hint.setTextSize(11);
@@ -127,7 +127,7 @@ public class MainActivity extends Activity {
         long now=SystemClock.elapsedRealtime();
         boolean active=CaptureService.running&&resumed;
         visual.setActive(active);
-        visual.setIntensity(.55f+gain.getProgress()*.0145f);
+        visual.setIntensity(.45f+gain.getProgress()*.018f);
         boolean beat=visual.audio(active?CaptureService.bass:0,active?CaptureService.mid:0,active?CaptureService.high:0,now);
         if(torch&&(!active||now-lastTorch>=90))setTorch(false);
         if(active&&beat&&flash.isChecked()&&hasWindowFocus()&&now-lastTorch>=550&&checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED){
