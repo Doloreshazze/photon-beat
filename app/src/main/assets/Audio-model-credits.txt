@@ -1,0 +1,28 @@
+Sung vowel classifier (sung-vowels.bin)
+The weights were fitted to short-time spectra of recorded and synthesized vowels, instrumental excerpts, and mixtures at varied levels, pitches, and EQ. The APK contains fitted parameters. Audio excerpts were used during development.
+
+VocalSet: A Singing Voice Dataset (2018), Julia Wilkins, Prem Seetharaman, Alison Wahl and Bryan Pardo. Long straight vowel recordings. Source and license
+https://zenodo.org/records/1442513
+https://creativecommons.org/licenses/by/4.0/
+The sustained recordings and cropped, normalized 80 ms vowel excerpts were sourced via the VocalSet vowel voicebanks maintained by mblackman. Inputs were resampled, segmented, pitch shifted, mixed, and converted to spectral features for training.
+https://github.com/mblackman/vocalset-vowel-voicebanks
+
+Instrumental material was obtained from the librosa example audio collection. Excerpts were resampled and used as accompaniment and negative examples.
+https://github.com/librosa/data
+Hungarian Dance No. 5, Johannes Brahms, performed by the U.S. Army Strings. Public domain.
+https://musopen.org/music/43805-hungarian-dance-no-5-in-f-sharp-minor-woo-1-string-orchestra-arr/
+Dance of the Sugar Plum Fairy, P. I. Tchaikovsky, performed by Kevin MacLeod. CC BY 3.0.
+https://freemusicarchive.org/music/Kevin_MacLeod/Classical_Sampler/Dance_of_the_Sugar_Plum_Fairy
+Jazz Trumpet Loops Pack in F, 90 bpm, Mihai Sorohan. CC BY 3.0.
+https://freesound.org/s/77711/
+https://creativecommons.org/licenses/by/3.0/
+Accelerating snare drum, Brian McFee, based on a CC0 sample by sakebeats. CC BY 4.0.
+https://github.com/librosa/data/blob/main/audio/snare-accelerate.txt
+https://freesound.org/people/sakebeats/sounds/176345/
+https://creativecommons.org/licenses/by/4.0/
+
+Viseme and voice activity models
+visemes.bin is the unmodified HeadAudio dist/model-en-mixed.bin from met4citizen/HeadAudio, revision 9f7654914559cf3beaf731117d2efa91958ef640, MIT. The feature extraction and Gaussian distance calculation are adapted for Java. See HeadAudio-LICENSE.txt.
+https://github.com/met4citizen/HeadAudio
+voice-activity.bin contains the mel bank and the fused FP32 convolution and classifier coefficients from PulseVAD 2.1k, revision af25e79d66830a3fee74541812721f6158fc92b5. The parameters were repacked for the Java streaming implementation. See PulseVAD-LICENSE.txt and PulseVAD-ATTRIBUTION.md.
+https://github.com/AydinAdnan/PulseVAD

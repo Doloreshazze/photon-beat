@@ -15,15 +15,15 @@ final class LipLayer {
     private void fill(Canvas c, Path path, int color) {
         paint.setColor(color); paint.setStyle(Paint.Style.FILL); c.drawPath(path, paint);
     }
-    void draw(Canvas c, int width, int height, float open, float round, float pulse,
-              float hue, float alpha, boolean center) {
+    void draw(Canvas c, int width, int height, MouthPose pose, float hue, float alpha, boolean center) {
+        float open = pose.jaw, round = pose.round;
         float size = Math.min(width * (center ? .82f : .62f), height * (center ? 1.45f : .72f));
-        float spread = 1 - .23f * round * open;
-        float top = 1 + open * (14 + 8 * round), bottom = 1 + open * (31 + 13 * round);
+        float spread = .87f + .22f * pose.wide - .42f * round;
+        float top = .12f + open * (14 + 11 * round) + 2.7f * pose.bite;
+        float bottom = Math.max(.12f, .12f + open * (36 + 15 * round) - 2.4f * pose.bite);
         c.save(); c.translate(0, center ? -height * .04f : -height * .26f);
         c.scale(size / 200f, size / 200f);
-        c.rotate((round - .5f) * 5);
-        c.scale(spread * (1 + .035f * pulse), 1 + .025f * pulse);
+        c.scale(spread, 1 + .10f * round);
 
         cavity.reset(); cavity.moveTo(-98, 0);
         cavity.cubicTo(-54, -top * .75f, -26, -top, 0, -top * .82f);
@@ -42,18 +42,22 @@ final class LipLayer {
         lower.cubicTo(-39, 38 + bottom * .85f, -68, 24 + bottom * .85f, -100, 0); lower.close();
 
         paint.setStyle(Paint.Style.STROKE); paint.setStrokeJoin(Paint.Join.ROUND);
-        paint.setStrokeWidth(9 + pulse * 3); paint.setColor(color(hue + 205, 1, 1, alpha * .17f));
+        paint.setStrokeWidth(9); paint.setColor(color(hue + 205, 1, 1, alpha * .17f));
         c.drawPath(upper, paint); c.drawPath(lower, paint);
         fill(c, cavity, Color.argb(Math.round(255 * alpha), 9, 0, 15));
         c.save(); c.clipPath(cavity);
-        if (open > .045f) {
+        if (open > .035f || pose.bite > .2f) {
             paint.setStyle(Paint.Style.FILL); paint.setColor(color(34, .08f, 1, alpha * .94f));
-            c.drawRoundRect(-65, -top - 6, 65, -top + 7 + open * 7, 5, 5, paint);
+            float toothWidth = 37 + 31 * pose.wide + 16 * pose.teeth;
+            float toothEdge = -top + 1 + 10 * pose.teeth + 3 * pose.bite;
+            c.drawRoundRect(-toothWidth, -top - 6, toothWidth, toothEdge, 4, 4, paint);
             paint.setColor(color(332, .72f, .84f, alpha));
-            c.drawOval(-34, bottom * .55f, 34, bottom * 1.25f + 6, paint);
+            float tip = bottom * .74f - pose.tongue * (bottom + top * .52f);
+            float tongueWidth = 32 - 10 * pose.tongue;
+            c.drawOval(-tongueWidth, tip, tongueWidth, bottom * 1.5f + 7, paint);
             paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(1.1f);
             paint.setColor(color(340, .85f, .45f, alpha));
-            c.drawLine(0, bottom * .67f, 0, bottom * .96f, paint);
+            c.drawLine(0, tip + 2, 0, bottom * .96f, paint);
         }
         c.restore();
         fill(c, upper, color(337 + round * 15, .92f, .82f, alpha));

@@ -1,4 +1,4 @@
 plugins { id 'com.android.application' }
 android { namespace 'com.playeverywhere.photonbeat'; compileSdk 35
- defaultConfig { applicationId 'com.playeverywhere.photonbeat'; minSdk 29; targetSdk 32; versionCode 8; versionName '0.8' }
+ defaultConfig { applicationId 'com.playeverywhere.photonbeat'; minSdk 29; targetSdk 32; versionCode 9; versionName '0.9' }
 }

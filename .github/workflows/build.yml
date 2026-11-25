@@ -22,11 +22,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Verify rhythm against synthetic audio envelopes
+      - name: Verify beat tracking and streaming lip sync
         run: |
           mkdir -p /tmp/photon-beat-tests
-          javac -d /tmp/photon-beat-tests app/src/main/java/com/playeverywhere/photonbeat/RhythmTracker.java tests/RhythmTrackerTest.java
+          src=app/src/main/java/com/playeverywhere/photonbeat
+          javac -encoding UTF-8 -d /tmp/photon-beat-tests "$src"/{RhythmTracker,AudioFft,VisemeModel,VowelFormants,VoiceActivityModel,SungVowels,MouthPose,LipTimeline,LipSync}.java tests/*.java
           java -cp /tmp/photon-beat-tests com.playeverywhere.photonbeat.RhythmTrackerTest
+          java -cp /tmp/photon-beat-tests com.playeverywhere.photonbeat.LipSyncTest app/src/main/assets
       - run: gradle assembleDebug
       - uses: actions/upload-artifact@v4
         with:

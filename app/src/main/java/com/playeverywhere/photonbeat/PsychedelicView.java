@@ -22,7 +22,7 @@ public final class PsychedelicView extends View {
     private final float[] trigX=new float[192],trigY=new float[192];
     private float intensity=1, bass, mid, high, pulse, accent, spin, hue, phase;
     private float peakB=.035f,peakM=.025f,peakH=.015f;
-    private float prevH, tempo, mouthOpen, mouthRound=.5f;
+    private float prevH, tempo;
     private long lastBeat=-1, lastAccent, lastFrame, lastAudioAt;
     private int validIntervals;
     private boolean active;
@@ -73,12 +73,14 @@ public final class PsychedelicView extends View {
     public void setQuality(int value){automaticQuality=value==0;quality=value==0?1:value-1;qualityFrames=0;invalidate();}
     public String fpsText(){return Math.round(1000/Math.max(1,frameMs))+" FPS · "+(quality==0?"Лёгкий":quality==1?"Баланс":"Детальный");}
     private boolean dancersEnabled=true, lipsEnabled=true;
-    private long danceStart, lipStart;
+    private long danceStart, lipDelayNs;
+    private final MouthPose mouth = new MouthPose();
     private int danceVariant;
     private final DanceLayer danceLayer=new DanceLayer();
     private final LipLayer lipLayer=new LipLayer();
     public void setDancersEnabled(boolean value){dancersEnabled=value;invalidate();}
     public void setLipsEnabled(boolean value){lipsEnabled=value;invalidate();}
+    public void setLipDelayMs(int value){lipDelayNs=value*1_000_000L;invalidate();}
     public PsychedelicView(Context c){super(c);setClickable(true);setContentDescription("Динамический музыкальный визуализатор");
         java.util.Random rng=new java.util.Random(8831);
         for(int i=0;i<stars.length;i++)stars[i]=rng.nextFloat();
@@ -89,7 +91,7 @@ public final class PsychedelicView extends View {
     public void setActive(boolean on){
         if(on==active)return;
         active=on;
-        if(!on){frameMs=16.7f;qualityFrames=0;danceStart=lipStart=0;danceVariant=0;bass=mid=high=pulse=accent=mouthOpen=0;mouthRound=.5f;lastBeat=-1;lastAudioAt=lastAccent=0;tempo=0;validIntervals=beatCount=0;scene=0;prevH=0;peakB=.035f;peakM=.025f;peakH=.015f;for(int i=0;i<ripple.length;i++)ripple[i]=0;}
+        if(!on){frameMs=16.7f;qualityFrames=0;danceStart=0;danceVariant=0;bass=mid=high=pulse=accent=0;mouth.rest();lastBeat=-1;lastAudioAt=lastAccent=0;tempo=0;validIntervals=beatCount=0;scene=0;prevH=0;peakB=.035f;peakM=.025f;peakH=.015f;for(int i=0;i<ripple.length;i++)ripple[i]=0;}
         lastFrame=0;invalidate();
     }
     private static float clamp(float v,float lo,float hi){return Math.max(lo,Math.min(hi,v));}
@@ -99,7 +101,6 @@ public final class PsychedelicView extends View {
         if(!active)return false;
         float b=sample.bass,m=sample.mid,h=sample.high;
         lastAudioAt=sample.capturedAt;
-        mouthOpen=sample.mouthOpen;mouthRound=sample.mouthRound;
         peakB=Math.max(b,peakB*.987f);peakM=Math.max(m,peakM*.987f);peakH=Math.max(h,peakH*.987f);
         bass=follow(bass,clamp(b/Math.max(.009f,peakB)*intensity,0,1.5f));
         mid=follow(mid,clamp(m/Math.max(.007f,peakM)*intensity,0,1.5f));
@@ -115,7 +116,6 @@ public final class PsychedelicView extends View {
             rippleIndex=(rippleIndex+1)%ripple.length;
             if(beatCount%8==0)scene=(scene+1)%SCENES;
             if(beatCount%24==1){danceStart=lastBeat;danceVariant=(danceVariant+1)%3;}
-            if(beatCount%24==13)lipStart=lastBeat;
         }
         prevH=h;
         return beat;
@@ -196,15 +196,19 @@ public final class PsychedelicView extends View {
                     danceLayer.draw(c,getWidth(),getHeight(),beatCount,progress,hit,mid,hue,strength,current==11?2:danceVariant);
                 }
             }
-            if(lipsEnabled&&(lipStart!=0||current==10)){
-                float age=now-lipStart,duration=period*8;
-                float strength=current==10?1:clamp(Math.min(age/200f,(duration-age)/400f),0,1)*music;
-                if(strength>0)lipLayer.draw(c,getWidth(),getHeight(),mouthOpen*freshness,mouthRound,pulse,hue,strength,current==10);
-            }
         }
-        if(!active&&current==10&&lipsEnabled)lipLayer.draw(c,getWidth(),getHeight(),0,.5f,0,hue,1,true);
         c.restore();
         touch.draw(c,now,quality,glowScale);
+        if(lipsEnabled && (active || current==10)){
+            if(active)CaptureService.lips.sample(SystemClock.elapsedRealtimeNanos()-lipDelayNs,mouth);
+            else mouth.rest();
+            float alpha=current==10?1:mouth.visible;
+            if(alpha>.005f){
+                c.save();c.translate(cx,cy);
+                lipLayer.draw(c,getWidth(),getHeight(),mouth,hue,alpha,current==10);
+                c.restore();
+            }
+        }
         if(active||interactive||mode==3)postInvalidateOnAnimation();
     }
     private void renderScene(Canvas c,float r,int s){

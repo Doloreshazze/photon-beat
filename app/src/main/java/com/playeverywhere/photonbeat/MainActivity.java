@@ -87,6 +87,7 @@ public class MainActivity extends Activity {
         lips.setChecked(true);
         lips.setOnCheckedChangeListener((button,on)->visual.setLipsEnabled(on));
         characters.addView(lips,new LinearLayout.LayoutParams(0,-2,1));
+        addLipDelayControl();
         TextView label=new TextView(this);
         label.setTextColor(Color.WHITE);
         label.setText("Чувствительность / интенсивность");
@@ -127,6 +128,34 @@ public class MainActivity extends Activity {
         h.post(tick);
     }
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
+    private void addLipDelayControl() {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView label = new TextView(this);
+        label.setTextColor(Color.WHITE);
+        label.setTextSize(12);
+        row.addView(label, new LinearLayout.LayoutParams(dp(140), -2));
+        SeekBar delay = new SeekBar(this);
+        delay.setContentDescription("Задержка губ в миллисекундах");
+        delay.setMax(40);
+        int ms = getPreferences(MODE_PRIVATE).getInt("lipDelayMs", 0);
+        delay.setProgress(ms / 10);
+        label.setText("Задержка губ  " + ms + " мс");
+        visual.setLipDelayMs(ms);
+        delay.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            public void onProgressChanged(SeekBar bar, int steps, boolean user) {
+                int value = 10 * steps;
+                visual.setLipDelayMs(value);
+                label.setText("Задержка губ  " + value + " мс");
+            }
+            public void onStartTrackingTouch(SeekBar bar) {}
+            public void onStopTrackingTouch(SeekBar bar) {
+                getPreferences(MODE_PRIVATE).edit().putInt("lipDelayMs", 10 * bar.getProgress()).apply();
+            }
+        });
+        row.addView(delay, new LinearLayout.LayoutParams(0, -2, 1));
+        controls.addView(row);
+    }
     private void button(LinearLayout row,String text,Runnable action){
         Button b=new Button(this);b.setText(text);b.setAllCaps(false);b.setTextSize(12);
         b.setOnClickListener(v->action.run());

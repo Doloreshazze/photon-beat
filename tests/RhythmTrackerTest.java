@@ -25,7 +25,6 @@ public final class RhythmTrackerTest {
                 detected++;
                 check(age <= 12, "Late or offbeat onset at " + bpm + " BPM: " + age + " ms");
             }
-            check(tracker.mouthOpen >= 0 && tracker.mouthOpen <= 1, "Invalid mouth envelope");
         }
         int expected = skipKick ? 19 : 20;
         check(detected == expected, bpm + " BPM: expected " + expected + " kicks, got " + detected);
@@ -39,13 +38,12 @@ public final class RhythmTrackerTest {
         for (int t = 13000; t < 15000; t += 6) tracker.update(0, 0, 0, t);
         check(tracker.beatCount == before, "Silence generated beats");
         check(tracker.lastBeat == -1 && tracker.validIntervals == 0, "Silence kept stale beat lock");
-        check(tracker.mouthOpen < .001f, "Mouth stayed open in silence");
         RhythmTracker sustained = new RhythmTracker();
         for (int t = 1000; t < 5000; t += 6) sustained.update(.02f, .02f, .005f, t);
         check(sustained.beatCount <= 1, "Sustained tone generated repeated beats");
         RhythmTracker treble = new RhythmTracker();
         for (int t = 1000; t < 5000; t += 6) treble.update(.001f, .002f, t % 250 < 12 ? .08f : .001f, t);
         check(treble.beatCount == 0, "Hi-hats moved the kick clock");
-        System.out.println("PASS: " + checks + " checks; 60–200 BPM, ghost notes, missing kick, silence, sustained tone, hi-hats, lip envelope");
+        System.out.println("PASS: " + checks + " rhythm checks, including silence and missed kicks");
     }
 }

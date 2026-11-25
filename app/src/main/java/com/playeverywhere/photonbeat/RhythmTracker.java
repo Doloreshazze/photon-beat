@@ -8,10 +8,10 @@ final class RhythmTracker {
     private int intervalCount, intervalIndex;
     private long previousTime = -1, quietSince = -1;
     private float previousBass, previousMid, previousHigh;
-    private float bassMean = .004f, fluxMean = .001f, midPeak = .015f;
+    private float bassMean = .004f, fluxMean = .001f;
     long lastBeat = -1;
     int beatCount, validIntervals;
-    float bpm = 120, mouthOpen, mouthRound = .5f;
+    float bpm = 120;
 
     private static float clamp(float v, float lo, float hi) { return Math.max(lo, Math.min(hi, v)); }
     private static float approach(float old, float target, float dt, float seconds) {
@@ -55,15 +55,6 @@ final class RhythmTracker {
         }
         bassMean = approach(bassMean, bass, dt, .65f);
         fluxMean = approach(fluxMean, flux, dt, .45f);
-        midPeak = Math.max(mid, midPeak * (float)Math.exp(-dt / 2.0f));
-        // Speech-band energy drives articulation; this does not attempt word recognition.
-        float envelope = clamp((mid - .0007f) / Math.max(.006f, midPeak - .0007f), 0, 1);
-        float voiced = clamp(mid / Math.max(.001f, .32f * bass + .4f * high + mid) * 1.5f - .18f, 0, 1);
-        float target = envelope * voiced;
-        mouthOpen = approach(mouthOpen, target, dt, target > mouthOpen ? .022f : .065f);
-        float brightness = high / Math.max(.001f, mid + high);
-        float round = clamp(.7f - brightness * .9f + .2f * bass / Math.max(.001f, bass + mid), 0, 1);
-        mouthRound = approach(mouthRound, round, dt, .05f);
         if (bass + mid + high < .0009f) {
             if (quietSince < 0) quietSince = now;
             if (now - quietSince > 750) {
